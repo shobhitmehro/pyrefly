@@ -351,12 +351,12 @@ testcase!(
     TestEnv::new(),
     r#"
 import polars as pl  # E: Cannot find module `polars`
-from typing import reveal_type
+from typing import Annotated, reveal_type
 
 class InputSchema:
     a: pl.Int64
 
-def transform(df: pl.DataFrame[InputSchema]) -> pl.LazyFrame:
+def transform(df: Annotated[pl.DataFrame, InputSchema]) -> pl.LazyFrame:
     return df.lazy().select("missing")
 
 reveal_type(transform(pl.DataFrame({"a": [1]})))  # E: revealed type: Unknown
@@ -5896,11 +5896,11 @@ testcase!(
     env_with_polars_stubs(),
     r#"
 import polars as pl
-from typing import reveal_type
+from typing import Annotated, reveal_type
 class MySchema:
     price: pl.Float64
     asset: pl.String
-def f(df: pl.DataFrame[MySchema]) -> None:
+def f(df: Annotated[pl.DataFrame, MySchema]) -> None:
     reveal_type(df)  # E: revealed type: DataFrame[price: Float64, asset: String]
 "#,
 );
@@ -5910,10 +5910,10 @@ testcase!(
     env_with_polars_stubs(),
     r#"
 import polars as pl
-from typing import reveal_type
+from typing import Annotated, reveal_type
 class MySchema:
     price: pl.Float64
-def f(df: pl.DataFrame[MySchema]) -> None:
+def f(df: Annotated[pl.DataFrame, MySchema]) -> None:
     reveal_type(df["price"])  # E: revealed type: Series[Float64]
     df["missing"]  # E: Column `missing` is not in the DataFrame schema
 "#,
@@ -5924,11 +5924,11 @@ testcase!(
     env_with_polars_stubs(),
     r#"
 import polars as pl
-from typing import reveal_type
+from typing import Annotated, reveal_type
 class MySchema:
     price: pl.Float64
     asset: pl.String
-def load() -> pl.DataFrame[MySchema]: ...
+def load() -> Annotated[pl.DataFrame, MySchema]: ...
 reveal_type(load())  # E: revealed type: DataFrame[price: Float64, asset: String]
 load()["missing"]  # E: Column `missing` is not in the DataFrame schema
 "#,
@@ -5939,10 +5939,10 @@ testcase!(
     env_with_polars_stubs(),
     r#"
 import polars as pl
-from typing import reveal_type
+from typing import Annotated, reveal_type
 class MySchema:
     price: pl.Float64
-def use(df: pl.DataFrame[MySchema]) -> None:
+def use(df: Annotated[pl.DataFrame, MySchema]) -> None:
     reveal_type(df["price"])  # E: revealed type: Series[Float64]
     df["missing"]  # E: Column `missing` is not in the DataFrame schema
 "#,
@@ -5957,6 +5957,19 @@ from typing import reveal_type
 def take(df: pl.DataFrame) -> None:
     reveal_type(df)  # E: revealed type: DataFrame
 take(pl.DataFrame({"a": [1]}))
+"#,
+);
+
+testcase!(
+    test_dataframe_subscript_schema_no_longer_special,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+class MySchema:
+    price: pl.Float64
+def f(df: pl.DataFrame[MySchema]) -> None:  # E: Expected 0 type arguments for `DataFrame`, got 1
+    reveal_type(df)  # E: revealed type: DataFrame
 "#,
 );
 
