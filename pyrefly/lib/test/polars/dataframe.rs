@@ -182,6 +182,7 @@ class Schema:
         "polars",
         r#"
 from polars.dataframe.frame import DataFrame as DataFrame
+from polars.lazyframe.frame import LazyFrame as LazyFrame
 from polars.series.series import Series as Series
 from polars.functions.eager import concat as concat
 from polars.functions.col import col as col
@@ -6014,6 +6015,37 @@ from typing import Annotated, reveal_type
 def f(df: Annotated[pl.DataFrame, "just a note"]) -> None:
     reveal_type(df)  # E: revealed type: DataFrame
     df["anything"]
+"#,
+);
+
+testcase!(
+    test_annotated_lazyframe_schema_closed,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated, reveal_type
+class MySchema:
+    price: pl.Float64
+    asset: pl.String
+def f(lf: Annotated[pl.LazyFrame, MySchema]) -> None:
+    reveal_type(lf)  # E: revealed type: LazyFrame[price: Float64, asset: String]
+    reveal_type(lf.collect())  # E: revealed type: DataFrame[price: Float64, asset: String]
+def load() -> Annotated[pl.LazyFrame, MySchema]: ...
+reveal_type(load())  # E: revealed type: LazyFrame[price: Float64, asset: String]
+"#,
+);
+
+testcase!(
+    test_annotated_lazyframe_schema_open,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated, reveal_type
+class MySchema:
+    price: pl.Float64
+def f(lf: Annotated[pl.LazyFrame, MySchema, ...]) -> None:
+    reveal_type(lf)  # E: revealed type: LazyFrame[price: Float64, ...]
+    reveal_type(lf.collect())  # E: revealed type: DataFrame[price: Float64, ...]
 "#,
 );
 
