@@ -6143,6 +6143,21 @@ want(pl.DataFrame({"price": [1.0]}))  # a DataFrame is not a LazyFrame  # E: not
 );
 
 testcase!(
+    test_annotated_series_dtype_assignability,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated
+def want(s: Annotated[pl.Series, pl.Int64]) -> None: ...
+def opaque() -> pl.Series: ...
+
+want(pl.DataFrame({"a": [1]})["a"])  # Series[Int64]: ok
+want(pl.DataFrame({"a": [1.0]})["a"])  # Series[Float64]  # E: not assignable
+want(opaque())  # Series with no tracked dtype  # E: not assignable
+"#,
+);
+
+testcase!(
     test_construct_variable_element_dtype,
     env_with_polars_stubs(),
     r#"

@@ -63,6 +63,8 @@ Pyrefly v1.3.0-dev.3 bundles **285 commits** from **33 contributors**.
 - SQLAlchemy `update()` values are now checked against the mapped fields of the model, and SQL expressions are accepted in a `values()` call.
 - SQLModel constructors now offer better hover text and completions.
 - Polars support gained recursive and nested dtypes, plus owned dtype handling.
+- Polars column schemas are now declared with PEP 593 `Annotated[pl.DataFrame, Schema]` (and `pl.LazyFrame` and `pl.Series`); the non-standard `pl.DataFrame[Schema]` subscript, which other type checkers reject, is no longer recognized. A trailing `...` (`Annotated[pl.DataFrame, Schema, ...]`) marks an open schema that also allows other columns.
+- A DataFrame, LazyFrame, or Series whose columns or dtype do not match a declared `Annotated` schema is now an assignability error, and a frame with no tracked schema no longer satisfies a schema-carrying annotation.
 - Pydantic `Field()` defaults now infer correctly against wide `Literal` annotations.
 - Attributes registered with `self.register_buffer(...)` and `self.register_parameter(...)` in a `torch.nn.Module` subclass are now recognized instead of reported as missing.
 

@@ -2307,8 +2307,20 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (Type::DataFrame(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
             // A frame with no tracked schema cannot satisfy a schema-carrying annotation.
             (_, Type::DataFrame(_)) => Err(SubsetError::Other),
+            (Type::Series(got_schema), Type::Series(want_schema)) => {
+                if want_schema.dtype == got_schema.dtype
+                    || want_schema.dtype == PolarsDType::Unknown
+                    || got_schema.dtype == PolarsDType::Unknown
+                {
+                    Ok(())
+                } else {
+                    Err(SubsetError::Other)
+                }
+            }
+            // A dtype-carrying Series widens to its bare underlying class.
             (Type::Series(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
-            (_, Type::Series(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
+            // A Series with no tracked dtype cannot satisfy a dtype-carrying annotation.
+            (_, Type::Series(_)) => Err(SubsetError::Other),
             // Any Int expression represents an integer dimension value, whether it is a
             // concrete literal (`Int[3]`) or symbolic (`Int[N]`, `Int[N + 1]`).
             (Type::Int(_), Type::ClassType(cls))
