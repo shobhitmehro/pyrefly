@@ -16,6 +16,8 @@ use itertools::Itertools;
 use itertools::izip;
 use pyrefly_python::dunder;
 use pyrefly_types::callable::Callable;
+use pyrefly_types::data_frame::DataFrameSchema;
+use pyrefly_types::data_frame::SchemaCompleteness;
 use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::ShapeError;
 use pyrefly_types::dimension::contains_var_in_type;
@@ -23,6 +25,7 @@ use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::is_gradual_size;
 use pyrefly_types::dimension::type_is_gradual_fast;
 use pyrefly_types::literal::Lit;
+use pyrefly_types::polars_dtype::PolarsDType;
 use pyrefly_types::read_only::ReadOnlyReason;
 use pyrefly_types::shaped_array::IntTuple;
 use pyrefly_types::shaped_array::IntTupleView;
@@ -2297,8 +2300,13 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 &Type::ClassType(got.class.clone()),
                 &Type::ClassType(want.class.clone()),
             ),
+            (Type::DataFrame(got_schema), Type::DataFrame(want_schema)) => {
+                self.is_subset_polars_schema(got_schema, want_schema)
+            }
+            // A schema-carrying frame widens to its bare underlying class.
             (Type::DataFrame(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
-            (_, Type::DataFrame(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
+            // A frame with no tracked schema cannot satisfy a schema-carrying annotation.
+            (_, Type::DataFrame(_)) => Err(SubsetError::Other),
             (Type::Series(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
             (_, Type::Series(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
             // Any Int expression represents an integer dimension value, whether it is a
@@ -2938,6 +2946,43 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
 
     fn intvar_targ_for_compare(arg: &Type) -> Result<Type, SubsetError> {
         type_as_intvar_solution(arg).ok_or(SubsetError::Other)
+    }
+
+    /// Column-schema subtyping for `Type::DataFrame` (and schema-carrying `LazyFrame`, which
+    /// shares the variant). A closed (`Complete`) target requires an identical ordered column
+    /// list; an open (`Partial`) target only requires each of its columns to be present, with
+    /// extras allowed and order ignored. `Unknown` on either side of a column dtype is a
+    /// wildcard.
+    fn is_subset_polars_schema(
+        &self,
+        got: &DataFrameSchema,
+        want: &DataFrameSchema,
+    ) -> Result<(), SubsetError> {
+        if got.kind != want.kind || got.underlying.class_object() != want.underlying.class_object()
+        {
+            // DataFrame vs LazyFrame, or Polars vs pandas.
+            return Err(SubsetError::Other);
+        }
+        let dtype_ok = |a: &PolarsDType, b: &PolarsDType| {
+            a == b || *a == PolarsDType::Unknown || *b == PolarsDType::Unknown
+        };
+        let ok = match want.completeness {
+            SchemaCompleteness::Complete => {
+                got.is_complete()
+                    && got.columns.len() == want.columns.len()
+                    && got
+                        .columns
+                        .iter()
+                        .zip(&want.columns)
+                        .all(|((gn, gd), (wn, wd))| gn == wn && dtype_ok(gd, wd))
+            }
+            SchemaCompleteness::Partial => want.columns.iter().all(|(wn, wd)| {
+                got.columns
+                    .iter()
+                    .any(|(gn, gd)| gn == wn && dtype_ok(gd, wd))
+            }),
+        };
+        if ok { Ok(()) } else { Err(SubsetError::Other) }
     }
 
     fn is_subset_shaped_array(
