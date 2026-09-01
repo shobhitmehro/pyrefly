@@ -1465,30 +1465,48 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(entries)
     }
 
-    /// Build the frame instance type declared by `Annotated[pl.DataFrame, Schema]` /
-    /// `Annotated[pl.LazyFrame, Schema]` (closed schema) or the trailing-`...` open / partial
-    /// variant. `inner` is the already resolved first `Annotated` argument; `metadata` is the
-    /// remaining metadata expressions. Returns `None` for any shape we do not recognize, so the
-    /// caller falls back to a plain `Type::Annotated`.
+    /// Build the instance type declared by a Polars `Annotated` schema annotation:
+    /// `Annotated[pl.DataFrame | pl.LazyFrame, Schema]` (closed) or its trailing-`...` open /
+    /// partial variant, and `Annotated[pl.Series, pl.Int64]` (a single dtype, no open form).
+    /// `inner` is the already resolved first `Annotated` argument; `metadata` is the remaining
+    /// metadata expressions. Returns `None` for any shape we do not recognize, so the caller
+    /// falls back to a plain `Type::Annotated`.
     pub fn polars_annotated_schema(&self, inner: &Type, metadata: &[Expr]) -> Option<Type> {
         let Type::ClassType(underlying) = inner else {
             return None;
         };
         let cls = underlying.class_object();
-        if !is_polars_dataframe(cls) && !is_polars_lazyframe(cls) {
+        let is_frame = is_polars_dataframe(cls) || is_polars_lazyframe(cls);
+        if !is_frame && !is_polars_series(cls) {
             return None;
         }
         let open = matches!(metadata.last(), Some(Expr::EllipsisLiteral(_)));
-        let schema_exprs = if open {
+        let payload = if open {
             &metadata[..metadata.len() - 1]
         } else {
             metadata
         };
-        let [schema_expr] = schema_exprs else {
+        let [meta_expr] = payload else {
             return None;
         };
-        let Type::ClassDef(schema_cls) = self.expr_infer(schema_expr, &self.error_swallower())
-        else {
+        let meta_ty = self.expr_infer(meta_expr, &self.error_swallower());
+
+        if is_polars_series(cls) {
+            // A Series carries a single element dtype; there is no open (`...`) form.
+            if open {
+                return None;
+            }
+            let dtype = polars_dtype_from_type(&meta_ty)?;
+            return Some(
+                SeriesSchema {
+                    underlying: underlying.clone(),
+                    dtype,
+                }
+                .to_type(),
+            );
+        }
+
+        let Type::ClassDef(schema_cls) = meta_ty else {
             return None;
         };
         let columns = self.schema_class_columns(&schema_cls)?;

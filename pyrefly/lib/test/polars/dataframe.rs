@@ -6050,6 +6050,32 @@ def f(lf: Annotated[pl.LazyFrame, MySchema, ...]) -> None:
 );
 
 testcase!(
+    test_annotated_series_dtype,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated, reveal_type
+def f(s: Annotated[pl.Series, pl.Int64]) -> None:
+    reveal_type(s)  # E: revealed type: Series[Int64]
+def make() -> Annotated[pl.Series, pl.Float64]: ...
+reveal_type(make())  # E: revealed type: Series[Float64]
+"#,
+);
+
+testcase!(
+    test_annotated_series_no_open_form_and_non_dtype_fall_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated, reveal_type
+def f(s: Annotated[pl.Series, pl.Int64, ...]) -> None:
+    reveal_type(s)  # E: revealed type: Series
+def g(s: Annotated[pl.Series, int]) -> None:
+    reveal_type(s)  # E: revealed type: Series
+"#,
+);
+
+testcase!(
     test_construct_variable_element_dtype,
     env_with_polars_stubs(),
     r#"
