@@ -892,6 +892,18 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             .to_owned(),
                     );
                 }
+                // `Annotated[pl.DataFrame, Schema]` (and the `, ...` open variant) carries a
+                // column schema Pyrefly tracks; other type checkers ignore the metadata.
+                if qualifier == Qualifier::Annotated
+                    && let Some(ty) = &ann.ty
+                {
+                    let metadata: Vec<Expr> =
+                        unpacked_slice[1..].iter().map(|e| (*e).clone()).collect();
+                    if let Some(framed) = self.polars_annotated_schema(ty, &metadata) {
+                        ann.ty = Some(framed);
+                        ann.display_ty = None;
+                    }
+                }
                 if qualifier != Qualifier::Annotated && ann.qualifiers.contains(&qualifier) {
                     self.error(
                         errors,

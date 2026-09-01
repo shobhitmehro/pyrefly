@@ -1465,6 +1465,47 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(entries)
     }
 
+    /// Build the frame instance type declared by `Annotated[pl.DataFrame, Schema]` (closed schema)
+    /// or `Annotated[pl.DataFrame, Schema, ...]` (open / partial schema). `inner` is the already
+    /// resolved first `Annotated` argument; `metadata` is the remaining metadata expressions.
+    /// Returns `None` for any shape we do not recognize, so the caller falls back to a plain
+    /// `Type::Annotated`.
+    pub fn polars_annotated_schema(&self, inner: &Type, metadata: &[Expr]) -> Option<Type> {
+        let Type::ClassType(underlying) = inner else {
+            return None;
+        };
+        if !is_polars_dataframe(underlying.class_object()) {
+            return None;
+        }
+        let open = matches!(metadata.last(), Some(Expr::EllipsisLiteral(_)));
+        let schema_exprs = if open {
+            &metadata[..metadata.len() - 1]
+        } else {
+            metadata
+        };
+        let [schema_expr] = schema_exprs else {
+            return None;
+        };
+        let Type::ClassDef(schema_cls) = self.expr_infer(schema_expr, &self.error_swallower())
+        else {
+            return None;
+        };
+        let columns = self.schema_class_columns(&schema_cls)?;
+        Some(
+            DataFrameSchema {
+                underlying: underlying.clone(),
+                columns,
+                completeness: if open {
+                    SchemaCompleteness::Partial
+                } else {
+                    SchemaCompleteness::Complete
+                },
+                kind: DataFrameKind::Polars,
+            }
+            .to_type(),
+        )
+    }
+
     /// Build the instance type represented by `pl.DataFrame[Schema]`.
     pub fn polars_dataframe_schema_annotation(&self, base: &Class, arg: &Expr) -> Option<Type> {
         if !is_polars_dataframe(base) {

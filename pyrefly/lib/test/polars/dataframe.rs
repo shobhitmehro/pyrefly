@@ -5961,6 +5961,50 @@ take(pl.DataFrame({"a": [1]}))
 );
 
 testcase!(
+    test_annotated_dataframe_schema_closed,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated, reveal_type
+class MySchema:
+    price: pl.Float64
+    asset: pl.String
+def f(df: Annotated[pl.DataFrame, MySchema]) -> None:
+    reveal_type(df)  # E: revealed type: DataFrame[price: Float64, asset: String]
+    reveal_type(df["price"])  # E: revealed type: Series[Float64]
+    df["missing"]  # E: Column `missing` is not in the DataFrame schema
+def load() -> Annotated[pl.DataFrame, MySchema]: ...
+reveal_type(load())  # E: revealed type: DataFrame[price: Float64, asset: String]
+"#,
+);
+
+testcase!(
+    test_annotated_dataframe_schema_open,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated, reveal_type
+class MySchema:
+    price: pl.Float64
+def f(df: Annotated[pl.DataFrame, MySchema, ...]) -> None:
+    reveal_type(df)  # E: revealed type: DataFrame[price: Float64, ...]
+    df["missing"]  # a partial schema cannot prove the column is absent
+"#,
+);
+
+testcase!(
+    test_annotated_dataframe_non_schema_metadata_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated, reveal_type
+def f(df: Annotated[pl.DataFrame, "just a note"]) -> None:
+    reveal_type(df)  # E: revealed type: DataFrame
+    df["anything"]
+"#,
+);
+
+testcase!(
     test_construct_variable_element_dtype,
     env_with_polars_stubs(),
     r#"
