@@ -6076,6 +6076,73 @@ def g(s: Annotated[pl.Series, int]) -> None:
 );
 
 testcase!(
+    test_annotated_schema_closed_assignability,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated
+class S:
+    price: pl.Float64
+    asset: pl.String
+def want(df: Annotated[pl.DataFrame, S]) -> None: ...
+def opaque() -> pl.DataFrame: ...
+
+want(pl.DataFrame({"price": [1.0], "asset": ["x"]}))  # exact match: ok
+want(pl.DataFrame({"price": [1.0]}))  # E: not assignable
+want(pl.DataFrame({"price": [1.0], "asset": ["x"], "extra": [1]}))  # E: not assignable
+want(pl.DataFrame({"asset": ["x"], "price": [1.0]}))  # wrong column order  # E: not assignable
+want(opaque())  # plain frame, no tracked schema  # E: not assignable
+"#,
+);
+
+testcase!(
+    test_annotated_schema_open_assignability,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated
+class S:
+    price: pl.Float64
+def want(df: Annotated[pl.DataFrame, S, ...]) -> None: ...
+
+want(pl.DataFrame({"price": [1.0]}))  # ok
+want(pl.DataFrame({"price": [1.0], "asset": ["x"]}))  # extra column allowed: ok
+want(pl.DataFrame({"asset": ["x"], "price": [1.0]}))  # order ignored: ok
+want(pl.DataFrame({"asset": ["x"]}))  # E: not assignable
+"#,
+);
+
+testcase!(
+    test_annotated_schema_partial_value_not_assignable_to_closed,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated
+class S:
+    a: pl.Int64
+def want(df: Annotated[pl.DataFrame, S]) -> None: ...
+# with_columns degrades the inferred schema to partial
+want(pl.DataFrame({"a": [1]}).with_columns(b=pl.col("a")))  # E: not assignable
+"#,
+);
+
+testcase!(
+    test_annotated_lazyframe_schema_assignability,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import Annotated
+class S:
+    price: pl.Float64
+def want(lf: Annotated[pl.LazyFrame, S]) -> None: ...
+
+want(pl.DataFrame({"price": [1.0]}).lazy())  # ok
+want(pl.DataFrame({"price": [1.0], "x": [1]}).lazy())  # E: not assignable
+want(pl.DataFrame({"price": [1.0]}))  # a DataFrame is not a LazyFrame  # E: not assignable
+"#,
+);
+
+testcase!(
     test_construct_variable_element_dtype,
     env_with_polars_stubs(),
     r#"
