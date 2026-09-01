@@ -1465,16 +1465,17 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(entries)
     }
 
-    /// Build the frame instance type declared by `Annotated[pl.DataFrame, Schema]` (closed schema)
-    /// or `Annotated[pl.DataFrame, Schema, ...]` (open / partial schema). `inner` is the already
-    /// resolved first `Annotated` argument; `metadata` is the remaining metadata expressions.
-    /// Returns `None` for any shape we do not recognize, so the caller falls back to a plain
-    /// `Type::Annotated`.
+    /// Build the frame instance type declared by `Annotated[pl.DataFrame, Schema]` /
+    /// `Annotated[pl.LazyFrame, Schema]` (closed schema) or the trailing-`...` open / partial
+    /// variant. `inner` is the already resolved first `Annotated` argument; `metadata` is the
+    /// remaining metadata expressions. Returns `None` for any shape we do not recognize, so the
+    /// caller falls back to a plain `Type::Annotated`.
     pub fn polars_annotated_schema(&self, inner: &Type, metadata: &[Expr]) -> Option<Type> {
         let Type::ClassType(underlying) = inner else {
             return None;
         };
-        if !is_polars_dataframe(underlying.class_object()) {
+        let cls = underlying.class_object();
+        if !is_polars_dataframe(cls) && !is_polars_lazyframe(cls) {
             return None;
         }
         let open = matches!(metadata.last(), Some(Expr::EllipsisLiteral(_)));
